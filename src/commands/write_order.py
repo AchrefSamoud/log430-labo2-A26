@@ -6,7 +6,6 @@ Auteurs : Gabriel C. Ullmann, Fabio Petrillo, 2025
 from models.product import Product
 from models.order_item import OrderItem
 from models.order import Order
-from queries.read_order import get_orders_from_mysql
 from db import get_sqlalchemy_session, get_redis_conn
 
 def add_order(user_id: int, items: list):
@@ -108,22 +107,21 @@ def delete_order_from_redis(order_id):
 
 def sync_all_orders_to_redis():
     """ Sync orders from MySQL to Redis """
-    # redis
     r = get_redis_conn()
-    orders_in_redis = r.keys(f"order:*")
-    rows_added = 0
+    orders_in_redis = r.keys("order:*")
+    if orders_in_redis:
+        print('Redis already contains orders, no need to sync!')
+        return len(orders_in_redis)
+
+    session = get_sqlalchemy_session()
     try:
-        if len(orders_in_redis) == 0:
-            # mysql
-            orders_from_mysql = []
-            for order in orders_from_mysql:
-                # TODO: terminez l'implementation
-                print(order)
-            rows_added = len(orders_from_mysql)
-        else:
-            print('Redis already contains orders, no need to sync!')
-    except Exception as e:
-        print(e)
-        return 0
+        orders_from_mysql = session.query(Order).all()
+        for order in orders_from_mysql:
+            r.hset(f"order:{order.id}", mapping={
+                "id": order.id,
+                "user_id": order.user_id,
+                "total_amount": order.total_amount,
+            })
+        return len(orders_from_mysql)
     finally:
-        return len(orders_in_redis) + rows_added
+        session.close()

@@ -19,10 +19,22 @@ def get_orders_from_mysql(limit=9999):
     return session.query(Order).order_by(desc(Order.id)).limit(limit).all()
 
 def get_orders_from_redis(limit=9999):
-    """Get last X orders"""
-    # TODO: écrivez la méthode
-    print(limit)
-    return []
+    """Get last X orders from Redis, newest first"""
+    r = get_redis_conn()
+    order_keys = sorted(
+        r.scan_iter(match="order:*"),
+        key=lambda key: int(key.split(":", 1)[1]),
+        reverse=True,
+    )[:limit]
+    orders = []
+    for key in order_keys:
+        data = r.hgetall(key)
+        orders.append(Order(
+            id=int(data["id"]),
+            user_id=int(data["user_id"]),
+            total_amount=float(data["total_amount"]),
+        ))
+    return orders
 
 def get_highest_spending_users():
     """Get report of best selling products"""

@@ -4,11 +4,8 @@ SPDX - License - Identifier: LGPL - 3.0 - or -later
 Auteurs : Gabriel C. Ullmann, Fabio Petrillo, 2025
 """
 
-from controllers.order_controller import populate_redis_from_mysql
-
 def show_main_menu():
-    """ Show main menu, populate Redis if needed """
-    populate_redis_from_mysql()
+    """ Show main menu """
     return get_template("""
         <nav>
             <h2>Formulaires d'enregistrement</h2>
