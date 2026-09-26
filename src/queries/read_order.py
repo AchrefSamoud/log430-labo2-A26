@@ -43,3 +43,13 @@ def get_highest_spending_users():
     for order in get_orders_from_redis(limit=None):
         expenses_by_user[order.user_id] += order.total_amount
     return sorted(expenses_by_user.items(), key=lambda item: item[1], reverse=True)[:10]
+
+def get_best_selling_products():
+    """Get products sorted by quantity sold, using Redis only"""
+    r = get_redis_conn()
+    sales = []
+    for key in r.scan_iter(match="product:*"):
+        quantity = int(r.get(key))
+        if quantity > 0:
+            sales.append((int(key.split(":", 1)[1]), quantity))
+    return sorted(sales, key=lambda item: item[1], reverse=True)

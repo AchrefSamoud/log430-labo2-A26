@@ -3,6 +3,7 @@ Orders (write-only model)
 SPDX - License - Identifier: LGPL - 3.0 - or -later
 Auteurs : Gabriel C. Ullmann, Fabio Petrillo, 2025
 """
+from collections import defaultdict
 from models.product import Product
 from models.order_item import OrderItem
 from models.order import Order
@@ -32,8 +33,9 @@ def add_order(user_id: int, items: list):
             pid = int(item["product_id"])
             qty = float(item["quantity"])
 
-            if not qty or qty <= 0:
-                raise ValueError(f"Vous devez indiquer une quantité superieure à zéro.")
+            if not qty or qty <= 0 or not qty.is_integer():
+                raise ValueError("Vous devez indiquer une quantité entière supérieure à zéro.")
+            qty = int(qty)
 
             if pid not in price_map:
                 raise ValueError(f"Article ID {pid} n'est pas dans la base de données.")
@@ -63,7 +65,7 @@ def add_order(user_id: int, items: list):
 
         session.commit()
 
-        add_order_to_redis(order_id, user_id, total_amount, items)
+        add_order_to_redis(order_id, user_id, total_amount, order_items_data)
 
         return order_id
 
@@ -80,10 +82,11 @@ def delete_order(order_id: int):
         order = session.query(Order).filter(Order.id == order_id).first()
         
         if order:
+            items = [(item.product_id, item.quantity) for item in order.order_items]
             session.delete(order)
             session.commit()
 
-            delete_order_from_redis(order_id)
+            delete_order_from_redis(order_id, items)
             return 1  
         else:
             return 0  
@@ -95,18 +98,26 @@ def delete_order(order_id: int):
         session.close()
 
 def add_order_to_redis(order_id, user_id, total_amount, items):
-    """Insert order to Redis"""
+    """Insert order and update product sales in Redis"""
     r = get_redis_conn()
-    r.hset(f"order:{order_id}", mapping={
-        "id": order_id,
-        "user_id": user_id,
-        "total_amount": total_amount,
-    })
+    with r.pipeline() as pipe:
+        pipe.hset(f"order:{order_id}", mapping={
+            "id": order_id,
+            "user_id": user_id,
+            "total_amount": total_amount,
+        })
+        for item in items:
+            pipe.incr(f"product:{item['product_id']}", item["quantity"])
+        pipe.execute()
 
-def delete_order_from_redis(order_id):
-    """Delete order from Redis"""
+def delete_order_from_redis(order_id, items=()):
+    """Delete order and reverse its product sales in Redis"""
     r = get_redis_conn()
-    r.delete(f"order:{order_id}")
+    with r.pipeline() as pipe:
+        pipe.delete(f"order:{order_id}")
+        for product_id, quantity in items:
+            pipe.decr(f"product:{product_id}", quantity)
+        pipe.execute()
 
 def sync_all_orders_to_redis():
     """ Sync orders from MySQL to Redis """
@@ -126,5 +137,25 @@ def sync_all_orders_to_redis():
                 "total_amount": order.total_amount,
             })
         return len(orders_from_mysql)
+    finally:
+        session.close()
+
+def sync_product_sales_to_redis():
+    """Initialize product sales from existing MySQL order items only once"""
+    r = get_redis_conn()
+    if r.exists("product_sales:initialized"):
+        return
+
+    session = get_sqlalchemy_session()
+    try:
+        sales_by_product = defaultdict(int)
+        for item in session.query(OrderItem).all():
+            sales_by_product[item.product_id] += item.quantity
+
+        with r.pipeline() as pipe:
+            for product_id, quantity in sales_by_product.items():
+                pipe.set(f"product:{product_id}", quantity)
+            pipe.set("product_sales:initialized", 1)
+            pipe.execute()
     finally:
         session.close()

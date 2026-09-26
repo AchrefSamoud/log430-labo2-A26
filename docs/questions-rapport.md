@@ -29,10 +29,10 @@ for key in order_keys:
 
 ## Question 3 — Ajout dans Redis
 
-Après `session.commit()` dans `commands/write_order.py`, `add_order_to_redis()` utilise `hset()` pour enregistrer la commande dans un hash Redis :
+Après `session.commit()` dans `commands/write_order.py`, `add_order_to_redis()` utilise `hset()` dans un pipeline Redis pour enregistrer la commande :
 
 ```python
-r.hset(f"order:{order_id}", mapping={
+pipe.hset(f"order:{order_id}", mapping={
     "id": order_id,
     "user_id": user_id,
     "total_amount": total_amount,
@@ -41,20 +41,19 @@ r.hset(f"order:{order_id}", mapping={
 
 ## Question 4 — Suppression dans Redis
 
-Après la suppression confirmée dans MySQL, `delete_order_from_redis()` utilise `delete()` pour effacer la même clé :
+Après la suppression confirmée dans MySQL, `delete_order_from_redis()` utilise `delete()` dans le pipeline Redis pour effacer la même clé :
 
 ```python
-r = get_redis_conn()
-r.delete(f"order:{order_id}")
+pipe.delete(f"order:{order_id}")
 ```
 
 ## Question 5 — Données nécessaires aux produits les plus vendus
 
-Non : les commandes dans Redis ne contiennent que `id`, `user_id` et `total_amount`. Il faut consulter les `order_items` dans MySQL ou ajouter à Redis, pour chaque produit, son identifiant et sa quantité vendue. Par exemple, lors de l’ajout d’une commande :
+Avant l’activité 6, non : les commandes dans Redis ne contenaient que `id`, `user_id` et `total_amount`. Il fallait consulter les `order_items` dans MySQL ou conserver les quantités vendues par produit dans Redis. L’activité 6 utilise maintenant :
 
 ```python
 for item in items:
-    r.incr(f"product:{item['product_id']}", int(item["quantity"]))
+    pipe.incr(f"product:{item['product_id']}", item["quantity"])
 ```
 
-Les commandes historiques devront aussi alimenter ces compteurs à partir de leurs `order_items`.
+Au démarrage, les `order_items` historiques alimentent aussi ces compteurs une seule fois.
