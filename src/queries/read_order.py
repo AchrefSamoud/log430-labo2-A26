@@ -4,6 +4,7 @@ SPDX - License - Identifier: LGPL - 3.0 - or -later
 Auteurs : Gabriel C. Ullmann, Fabio Petrillo, 2025
 """
 
+from collections import defaultdict
 from db import get_sqlalchemy_session, get_redis_conn
 from sqlalchemy import desc
 from models.order import Order
@@ -37,7 +38,8 @@ def get_orders_from_redis(limit=9999):
     return orders
 
 def get_highest_spending_users():
-    """Get report of best selling products"""
-    # TODO: écrivez la méthode
-    # triez le résultat par nombre de commandes (ordre décroissant)
-    return []
+    """Get the ten users who spent the most on orders in Redis"""
+    expenses_by_user = defaultdict(float)
+    for order in get_orders_from_redis(limit=None):
+        expenses_by_user[order.user_id] += order.total_amount
+    return sorted(expenses_by_user.items(), key=lambda item: item[1], reverse=True)[:10]

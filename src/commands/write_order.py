@@ -63,7 +63,6 @@ def add_order(user_id: int, items: list):
 
         session.commit()
 
-        # TODO: ajouter la commande à Redis
         add_order_to_redis(order_id, user_id, total_amount, items)
 
         return order_id
@@ -84,7 +83,6 @@ def delete_order(order_id: int):
             session.delete(order)
             session.commit()
 
-            # TODO: supprimer la commande à Redis
             delete_order_from_redis(order_id)
             return 1  
         else:
@@ -99,11 +97,16 @@ def delete_order(order_id: int):
 def add_order_to_redis(order_id, user_id, total_amount, items):
     """Insert order to Redis"""
     r = get_redis_conn()
-    print(r)
+    r.hset(f"order:{order_id}", mapping={
+        "id": order_id,
+        "user_id": user_id,
+        "total_amount": total_amount,
+    })
 
 def delete_order_from_redis(order_id):
     """Delete order from Redis"""
-    pass
+    r = get_redis_conn()
+    r.delete(f"order:{order_id}")
 
 def sync_all_orders_to_redis():
     """ Sync orders from MySQL to Redis """
